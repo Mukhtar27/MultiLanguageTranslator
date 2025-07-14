@@ -1,77 +1,92 @@
 import streamlit as st
 import pandas as pd
-import io
+from deep_translator import GoogleTranslator, single_detection
 import time
-from googletrans import Translator
+import io
+
+st.set_page_config(page_title="Multilingual Translator", layout="wide")
 
 # Title
-st.title("🌐 Multilingual Translator with Transliteration")
-st.write("Upload an Excel file with text and choose languages to translate. Optionally, get transliteration.")
+st.title("🌍 Multilingual Translator & Transliterator")
+st.write("Upload an Excel file, select a column, and choose languages to translate and transliterate the text.")
 
 # Upload file
-uploaded_file = st.file_uploader("Upload Excel file (.xlsx)", type=["xlsx"])
-
-# Language selection
-language_map = {
-    "English": "en",
-    "Arabic": "ar",
-    "Hindi": "hi",
-    "French": "fr",
-    "German": "de"
-}
-
-source_lang = st.selectbox("Select source language", list(language_map.keys()))
-target_lang = st.selectbox("Select target language", list(language_map.keys()))
-
-add_transliteration = st.checkbox("Include Transliteration")
+uploaded_file = st.file_uploader("📤 Upload Excel File (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    st.success("✅ File uploaded successfully.")
-    
-    col_to_translate = st.selectbox("Select column to translate", df.columns.tolist())
+    try:
+        df = pd.read_excel(uploaded_file)
+        st.success("✅ File uploaded successfully!")
 
-    translator = Translator()
-    translations = []
-    transliterations = []
+        # Select column
+        columns = df.columns.tolist()
+        text_column = st.selectbox("Select column to translate:", columns)
 
-    progress = st.progress(0)
-    status_text = st.empty()
-    start_time = time.time()
+        # Select language pair
+        st.markdown("### 🌐 Translation Settings")
+        available_languages = GoogleTranslator.get_supported_languages(as_dict=True)
+        lang_keys = list(available_languages.keys())
 
-    for i, text in enumerate(df[col_to_translate]):
-        try:
-            result = translator.translate(str(text), src=language_map[source_lang], dest=language_map[target_lang])
-            translations.append(result.text)
-            if add_transliteration:
-                transliterations.append(result.pronunciation or "")
-            else:
-                transliterations.append("")
-        except Exception as e:
-            translations.append("⚠️ Error")
-            transliterations.append("")
+        source_lang = st.selectbox("Translate from (source language)", options=lang_keys, index=lang_keys.index("arabic"))
+        target_lang = st.selectbox("Translate to (target language)", options=lang_keys, index=lang_keys.index("english"))
 
-        progress.progress((i + 1) / len(df))
-        status_text.text(f"Translating {i+1}/{len(df)}")
+        do_transliterate = st.checkbox("🔡 Show Transliteration (Latin script)", value=True)
 
-    elapsed_time = time.time() - start_time
+        if st.button("🚀 Translate"):
+            progress = st.progress(0)
+            status_text = st.empty()
+            start_time = time.time()
 
-    df["Translated"] = translations
-    if add_transliteration:
-        df["Transliteration"] = transliterations
+            translator = GoogleTranslator(source=source_lang, target=target_lang)
+            translations = []
+            transliterations = []
+            errors = 0
 
-    st.subheader("Preview")
-    st.dataframe(df)
+            text_list = df[text_column].astype(str).tolist()
+            total = len(text_list)
 
-    output = io.BytesIO()
-    df.to_excel(output, index=False, engine="openpyxl")
-    output.seek(0)
+            for i, text in enumerate(text_list):
+                try:
+                    translated = translator.translate(text)
+                    translations.append(translated)
 
-    st.download_button(
-        label="📥 Download Translated File",
-        data=output,
-        file_name="translated_output.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+                    if do_transliterate:
+                        # Get transliteration only for supported languages
+                        transliterations.append(GoogleTranslator(source=source_lang, target="en").translate(text))
+                    else:
+                        transliterations.append("")
+                except Exception:
+                    translations.append("⚠️ Error")
+                    transliterations.append("")
+                    errors += 1
 
-    st.info(f"✅ Done! Time elapsed: {elapsed_time:.2f} seconds")
+                progress.progress((i + 1) / total)
+                status_text.text(f"Processing {i + 1} of {total}...")
+
+            # Append to DataFrame
+            df["Translated"] = translations
+            if do_transliterate:
+                df["Transliteration"] = transliterations
+
+            # Time summary
+            elapsed = time.time() - start_time
+            st.success(f"✅ Done! Time taken: {elapsed:.2f} seconds | Errors: {errors}")
+
+            # Preview
+            st.dataframe(df)
+
+            # Download
+            output = io.BytesIO()
+            df.to_excel(output, index=False, engine='openpyxl')
+            output.seek(0)
+
+            st.download_button(
+                label="📥 Download Translated Excel",
+                data=output,
+                file_name="translated_output.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    except Exception as e:
+        st.error("⚠️ Something went wrong. Please check your file format.")
+        st.exception(e)
