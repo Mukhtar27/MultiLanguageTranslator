@@ -12,7 +12,7 @@ st.write("Upload an Excel file, select the text column and choose source and tar
 uploaded_file = st.file_uploader("Upload Excel file (.xlsx)", type=["xlsx"])
 
 # Language selection
-LANGUAGE_OPTIONS = GoogleTranslator.get_supported_languages(as_dict=True)
+LANGUAGE_OPTIONS = GoogleTranslator(source='auto', target='en').get_supported_languages(as_dict=True)
 
 col1, col2 = st.columns(2)
 with col1:
