@@ -24,7 +24,7 @@ if uploaded_file:
 
         # Select language pair
         st.markdown("### 🌐 Translation Settings")
-        available_languages = GoogleTranslator.get_supported_languages(as_dict=True)
+        available_languages = GoogleTranslator(source='auto', target='en').get_supported_languages(as_dict=True)
         lang_keys = list(available_languages.keys())
 
         source_lang = st.selectbox("Translate from (source language)", options=lang_keys, index=lang_keys.index("arabic"))
