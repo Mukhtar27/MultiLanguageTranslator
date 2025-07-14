@@ -24,54 +24,64 @@ source_lang = LANGUAGE_OPTIONS[source_lang_label]
 target_lang = LANGUAGE_OPTIONS[target_lang_label]
 
 if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file)
-        st.success("✅ File uploaded successfully.")
-        columns = df.columns.tolist()
-        column = st.selectbox("Select column to translate:", columns)
+    df = pd.read_excel(uploaded_file)
+    st.success("File uploaded successfully.")
 
-        translations = []
-        transliterations = []
-        errors = 0
-        progress = st.progress(0)
-        status = st.empty()
-        start = time.time()
+    # Ask for column name containing text
+    columns = df.columns.tolist()
+    column = st.selectbox("Select column to translate:", columns)
 
-        for i, text in enumerate(df[column]):
-            try:
-                translated = GoogleTranslator(source=source_lang, target=target_lang).translate(str(text))
-                translations.append(translated)
-                transliterations.append(translated)  # approximation of transliteration
-            except Exception as e:
-                translations.append("⚠️ Error")
-                transliterations.append("")
-                errors += 1
+    if st.button("🔁 Translate"):
+        try:
+            # 🌎 Translate
+            translator = Translator()
+            translations = []
+            transliterations = []
+            errors = 0
 
-            progress.progress((i + 1) / len(df))
-            status.text(f"Processing... {int((i + 1) / len(df) * 100)}%")
+            progress = st.progress(0)
+            status_text = st.empty()
+            start_time = time.time()
 
-        df["Translated"] = translations
-        df["Transliteration"] = transliterations
+            for i, text in enumerate(df[column]):
+                try:
+                    result = translator.translate(str(text), src=source_lang, dest=target_lang)
+                    translated_text = result.text
+                    transliteration = result.pronunciation if result.pronunciation else ""
+                except Exception as e:
+                    translated_text = "⚠️ Error"
+                    transliteration = ""
+                    errors += 1
 
-        elapsed = time.time() - start
+                translations.append(translated_text)
+                transliterations.append(transliteration)
 
-        st.subheader("🔍 Preview")
-        st.dataframe(df)
+                progress.progress((i + 1) / len(df))
+                status_text.text(f"Translating... {int((i + 1) / len(df) * 100)}%")
 
-        output = io.BytesIO()
-        df.to_excel(output, index=False, engine="openpyxl")
-        output.seek(0)
+            elapsed = time.time() - start_time
 
-        st.download_button(
-            label="📥 Download Translated Excel",
-            data=output,
-            file_name="translated_names.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            # Add columns
+            df["Translated"] = translations
+            df["Transliteration"] = transliterations
 
-        st.success(f"✅ Done! Translated {len(df)} rows with {errors} errors.")
-        st.info(f"⏱️ Time taken: {elapsed:.2f} seconds")
+            st.subheader("🔍 Preview")
+            st.dataframe(df)
 
-    except Exception as e:
-        st.error("⚠️ Something went wrong. Check file format or column selection.")
-        st.exception(e)
+            output = io.BytesIO()
+            df.to_excel(output, index=False, engine='openpyxl')
+            output.seek(0)
+
+            st.download_button(
+                label="📅 Download Translated Excel",
+                data=output,
+                file_name="translated_output.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.success(f"✅ Translation complete. Errors: {errors}")
+            st.info(f"⏱️ Time elapsed: {elapsed:.2f} seconds")
+
+        except Exception as e:
+            st.error("⚠️ Something went wrong during translation.")
+            st.exception(e)
