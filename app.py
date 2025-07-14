@@ -1,91 +1,96 @@
 import streamlit as st
 import pandas as pd
-from deep_translator import GoogleTranslator, single_detection
-import time
+from googletrans import Translator
 import io
+import time
 
-st.set_page_config(page_title="Multilingual Translator", layout="wide")
+# 📄 Title and instructions
+st.title("📗 Multi-Language Translator with Transliteration")
+st.write("Upload an Excel file with names or text. Choose source and target language for translation and transliteration.")
 
-# Title
-st.title("🌍 Multilingual Translator & Transliterator")
-st.write("Upload an Excel file, select a column, and choose languages to translate and transliterate the text.")
+# 📂 File uploader
+uploaded_file = st.file_uploader("Upload Excel file (.xlsx)", type=["xlsx"])
 
-# Upload file
-uploaded_file = st.file_uploader("📤 Upload Excel File (.xlsx)", type=["xlsx"])
+# Language selection options
+LANGUAGE_OPTIONS = {
+    "Arabic": "ar",
+    "English": "en",
+    "Hindi": "hi",
+    "French": "fr",
+    "Spanish": "es",
+    "German": "de",
+    "Chinese (Simplified)": "zh-CN",
+    "Japanese": "ja",
+    "Russian": "ru",
+    "Urdu": "ur"
+}
+
+col1, col2 = st.columns(2)
+with col1:
+    source_lang_label = st.selectbox("Select source language", list(LANGUAGE_OPTIONS.keys()), index=0)
+with col2:
+    target_lang_label = st.selectbox("Select target language", list(LANGUAGE_OPTIONS.keys()), index=1)
+
+source_lang = LANGUAGE_OPTIONS[source_lang_label]
+target_lang = LANGUAGE_OPTIONS[target_lang_label]
 
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file)
-        st.success("✅ File uploaded successfully!")
+        st.success("File uploaded successfully.")
 
-        # Select column
+        # Ask for column name containing text
         columns = df.columns.tolist()
-        text_column = st.selectbox("Select column to translate:", columns)
+        column = st.selectbox("Select column to translate:", columns)
 
-        # Select language pair
-        st.markdown("### 🌐 Translation Settings")
-        available_languages = GoogleTranslator(source='auto', target='en').get_supported_languages(as_dict=True)
-        lang_keys = list(available_languages.keys())
+        # 🌎 Translate
+        translator = Translator()
+        translations = []
+        transliterations = []
+        errors = 0
 
-        source_lang = st.selectbox("Translate from (source language)", options=lang_keys, index=lang_keys.index("arabic"))
-        target_lang = st.selectbox("Translate to (target language)", options=lang_keys, index=lang_keys.index("english"))
+        progress = st.progress(0)
+        status_text = st.empty()
+        start_time = time.time()
 
-        do_transliterate = st.checkbox("🔡 Show Transliteration (Latin script)", value=True)
+        for i, text in enumerate(df[column]):
+            try:
+                result = translator.translate(str(text), src=source_lang, dest=target_lang)
+                translated_text = result.text
+                transliteration = result.pronunciation if result.pronunciation else ""
+            except Exception as e:
+                translated_text = "⚠️ Error"
+                transliteration = ""
+                errors += 1
 
-        if st.button("🚀 Translate"):
-            progress = st.progress(0)
-            status_text = st.empty()
-            start_time = time.time()
+            translations.append(translated_text)
+            transliterations.append(transliteration)
 
-            translator = GoogleTranslator(source=source_lang, target=target_lang)
-            translations = []
-            transliterations = []
-            errors = 0
+            progress.progress((i + 1) / len(df))
+            status_text.text(f"Translating... {int((i + 1) / len(df) * 100)}%")
 
-            text_list = df[text_column].astype(str).tolist()
-            total = len(text_list)
+        elapsed = time.time() - start_time
 
-            for i, text in enumerate(text_list):
-                try:
-                    translated = translator.translate(text)
-                    translations.append(translated)
+        # Add columns
+        df["Translated"] = translations
+        df["Transliteration"] = transliterations
 
-                    if do_transliterate:
-                        # Get transliteration only for supported languages
-                        transliterations.append(GoogleTranslator(source=source_lang, target="en").translate(text))
-                    else:
-                        transliterations.append("")
-                except Exception:
-                    translations.append("⚠️ Error")
-                    transliterations.append("")
-                    errors += 1
+        st.subheader("🔍 Preview")
+        st.dataframe(df)
 
-                progress.progress((i + 1) / total)
-                status_text.text(f"Processing {i + 1} of {total}...")
+        output = io.BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
 
-            # Append to DataFrame
-            df["Translated"] = translations
-            if do_transliterate:
-                df["Transliteration"] = transliterations
+        st.download_button(
+            label="📅 Download Translated Excel",
+            data=output,
+            file_name="translated_output.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
-            # Time summary
-            elapsed = time.time() - start_time
-            st.success(f"✅ Done! Time taken: {elapsed:.2f} seconds | Errors: {errors}")
-
-            # Preview
-            st.dataframe(df)
-
-            # Download
-            output = io.BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
-            output.seek(0)
-
-            st.download_button(
-                label="📥 Download Translated Excel",
-                data=output,
-                file_name="translated_output.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.success(f"✅ Translation complete. Errors: {errors}")
+        st.info(f"⏱️ Time elapsed: {elapsed:.2f} seconds")
 
     except Exception as e:
         st.error("⚠️ Something went wrong. Please check your file format.")
